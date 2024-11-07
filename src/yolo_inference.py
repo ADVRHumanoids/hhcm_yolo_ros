@@ -14,9 +14,8 @@ from hhcm_yolo_ros.msg import ObjectStatus
 from hhcm_yolo_ros.srv import ClientToServerString, ClientToServerStringResponse
 
 # This ROS node implements YOLO Inference 
-# and to publish the results on the corresponding topic 
+# and publish the results on the corresponding topic 
  
-
 
 class YOLOInference():
     def __init__(self):
@@ -36,14 +35,14 @@ class YOLOInference():
         #initialize subscribers 
         self.img_sub = rospy.Subscriber('/nicla/camera/image_raw', Image, self.getColorFrame)
         self.camera_info_sub = rospy.Subscriber('/nicla/camera/camera_info', CameraInfo, self.getCameraInfo)
-        self.tof_sub = rospy.Subscriber('/nicla/tof', Image, self.getTOF)
+        self.tof_sub = rospy.Subscriber('/nicla/tof', Range, self.getTOF)
 
 
         #initialize networks (loading weights) & useful variables
         PATH_WEIGHTS = '../weights/'
 
         # model for object instance segmentation
-        self.model_detection = YOLO(PATH_WEIGHTS+"best_lever.pt")  
+        self.model_detection = YOLO(PATH_WEIGHTS+"yolo11n-seg.pt")  
         # self.model_detection.to('cuda')
 
         # model classes 
@@ -66,7 +65,15 @@ class YOLOInference():
         self.what_to_perceive_service = rospy.Service('/yolo/what_to_perceive', ClientToServerString, self.what_to_perceive_service) 
          
 
-    #callback function to receive the color frame    
+    # Service callback 
+    def what_to_perceive_service(self, msg):
+        # This service is for receiving a list of "what" to perceive 
+        self.what_to_perceive = msg.data
+        self.what_to_perceive = json.loads(self.what_to_perceive)
+
+        return ClientToServerStringResponse(success=True)
+
+    # Callback function to receive the color frame    
     def getColorFrame(self, msg):  
         bridge = CvBridge()
         try:
@@ -77,7 +84,7 @@ class YOLOInference():
         # cv2.waitKey(3)
 
     
-    #callback function to receive the camera info
+    # Callback function to receive the camera info
     def getCameraInfo(self, cameraInfo):  
         self._intrinsics.width = cameraInfo.width
         self._intrinsics.height = cameraInfo.height
@@ -89,12 +96,14 @@ class YOLOInference():
         self._intrinsics.coeffs = [i for i in cameraInfo.D]  
 
     
-    #callback function to receive TOF
+    # Callback function to receive TOF
     def getTOF(self, tof_msg):  
         self._tof.range = tof_msg.range 
         self._tof.min_range = tof_msg.min_range 
         self._tof.max_range = tof_msg.max_range 
 
+    
+    # Inference functions 
     def detect(self, frame, object_classes_list): 
         # This function calls the model_detection for instance segmentation
         # and publishes the detections on the corresponding ROS topics.
@@ -123,6 +132,8 @@ class YOLOInference():
                 id_class = detected_classes_list[idx]
                 #print("id_class: ", id_class)
                 #print("type(id_class): ", type(id_class))
+
+
                 if conf >= self.detection_confidence_threshold:    
                     class_name = self.model_detection_classes[id_class]
                     
@@ -186,22 +197,14 @@ class YOLOInference():
 
         return [False, [], [], []]
 
-    
-    def draw_boundbox_yolo(self, image): #, center_x, center_y, width, height):
+
+
+    # Draw bounding box from YOLO Inference 
+    def draw_boundbox_yolo(self, image):  
         response = self.detection_response 
         if len(response) != 0 and response[0]:         
 
             predictions = response[3]  # This is a list of msg_object_status
-            """
-            msg_object_status.object_class = class_name 
-            msg_object_status.object_ID = available_obj_id 
-            msg_object_status.confidence = conf 
-            msg_object_status.bounding_box_vertices = [xyxy[idx][0],xyxy[idx][1], xyxy[idx][2], xyxy[idx][3]] 
-            msg_object_status.bounding_box_center = [xywh[idx][0], xywh[idx][1]] 
-            msg_object_status.bounding_box_wh = [xywh[idx][2], xywh[idx][3]] 
-            msg_object_status.segmentation_mask = None # TODO 
-            msg_object_status.pose = None # TODO: maybe another module for this ? 
-            """
             
             for obj in predictions:  
                 center_x = obj.bounding_box_center[0]
@@ -220,27 +223,17 @@ class YOLOInference():
 
         return image
 
-    
-    def what_to_perceive_service(self, msg):
-        # This service is for receiving a list of "what" to perceive 
-        self.what_to_perceive = msg.data
-        self.what_to_perceive = json.loads(self.what_to_perceive)
-
-        return ClientToServerStringResponse(success=True)
-
-    
-    
-     
-    
 
 
     def run_inference(self):
-        #loop function: at each cycle run the inference on the updated data
+        # Loop function: at each cycle run the inference on the updated data
 
         # call object_detection 
         # response[0] : bool of the result,  
-        # response[1] : depth frame, 
-        # response[2] : list of predictions
+        # response[1] : color frame, 
+        # response[2] : TOF, 
+        # response[3] : list of predictions
+
         if "yolo" in self.what_to_perceive:
             self.detection_response = self.object_detection(self.what_to_perceive['yolo'])
  
