@@ -11,7 +11,7 @@ from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image, CameraInfo, Range 
 
 from hhcm_yolo_ros.msg import ObjectStatus
-from hhcm_yolo_ros.srv import ClientToServerString
+from hhcm_yolo_ros.srv import ClientToServerString, ClientToServerStringResponse
 
 # This ROS node implements YOLO Inference 
 # and to publish the results on the corresponding topic 
