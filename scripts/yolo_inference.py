@@ -123,7 +123,8 @@ class YOLOInference():
         # In the returned list there will be only predictions with a confidence above a threshold (self.detection_confidence_threshold).
         
         # YOLO function to predict on a frame using the loaded model
-        results = self.model_detection(source=frame, show=False, save=False, verbose=False, device=0)[0] 
+        results = self.model_detection(source=frame, show=False, save=False, verbose=False, device='cpu')[0] 
+        print(results)
         
         if len(results)!= 0 : #case of predictions 
 
@@ -190,8 +191,8 @@ class YOLOInference():
         # list[0]: boolean (True: some detections available, False: no detections)
         # list[1]: corresponding color frame of the prediction (necessary because in the meanwhile the frame may be updated)
         # list[2]: list of predictions (each item of this list is explained in the <detect> function)
- 
-        if (len(self._color_frame) > 0):
+         
+        if (len(self._color_frame) > 0): 
             color_frame = self._color_frame
             # cv2.imshow("Image window", color_frame)
             # cv2.waitKey(3) 
@@ -240,7 +241,9 @@ class YOLOInference():
 
         if "yolo" in self.what_to_perceive:
             self.detection_response = self.object_detection(self.what_to_perceive['yolo'])
- 
+        
+        self.detection_response = self.object_detection(["bottle"])
+
 
         
     def run(self): 

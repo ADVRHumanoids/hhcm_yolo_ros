@@ -4,7 +4,7 @@ string object_ID
 float64 confidence 
 int8[] bounding_box_vertices  
 int8[] bounding_box_center 
-int8[] bounding_box_vertices_meter
-int8[] bounding_box_center_meter
+float64[] bounding_box_vertices_meter
+float64[] bounding_box_center_meter
 int8[] bounding_box_wh
 int8[] segmentation_mask
