@@ -6,6 +6,7 @@ import rospy
 import numpy as np  
 from ultralytics import YOLO  
 import json 
+from dataclasses import dataclass
 
 from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image, CameraInfo, Range 
@@ -16,6 +17,20 @@ from hhcm_yolo_ros.srv import ClientToServerString, ClientToServerStringResponse
 # This ROS node implements YOLO Inference 
 # and publish the results on the corresponding topic 
  
+@dataclass
+class CameraIntrinsics:
+    width: int = 0
+    height: int = 0
+    cx: float = 0.0
+    cy: float = 0.0
+    fx: float = 0.0
+    fy: float = 0.0
+    model: str = ''
+    coeffs: list = None
+
+    def __post_init__(self):
+        if self.coeffs is None:
+            self.coeffs = []
 
 class YOLOInference():
     def __init__(self):
@@ -27,16 +42,14 @@ class YOLOInference():
 
         #initialize variables  
         self.what_to_perceive = []
-        self._color_frame = []                       #store the color frame
-        self._tof = []                               #store the TOF
-        self._intrinsics= []                         #store the camera info
+        self._color_frame = []                       #store the color frame 
+        self._intrinsics= CameraIntrinsics()         #store the camera info
         self.detection_response = []   
 
         #initialize subscribers 
         self.img_sub = rospy.Subscriber('/nicla/camera/image_raw', Image, self.getColorFrame)
         self.camera_info_sub = rospy.Subscriber('/nicla/camera/camera_info', CameraInfo, self.getCameraInfo)
-        self.tof_sub = rospy.Subscriber('/nicla/tof', Range, self.getTOF)
-
+ 
 
         #initialize networks (loading weights) & useful variables
         PATH_WEIGHTS = '../weights/'
@@ -85,7 +98,7 @@ class YOLOInference():
 
     
     # Callback function to receive the camera info
-    def getCameraInfo(self, cameraInfo):  
+    def getCameraInfo(self, cameraInfo): 
         self._intrinsics.width = cameraInfo.width
         self._intrinsics.height = cameraInfo.height
         self._intrinsics.cx = cameraInfo.K[2]
@@ -95,13 +108,7 @@ class YOLOInference():
         self._intrinsics.model  = cameraInfo.distortion_model
         self._intrinsics.coeffs = [i for i in cameraInfo.D]  
 
-    
-    # Callback function to receive TOF
-    def getTOF(self, tof_msg):  
-        self._tof.range = tof_msg.range 
-        self._tof.min_range = tof_msg.min_range 
-        self._tof.max_range = tof_msg.max_range 
-
+     
     
     # Inference functions 
     def detect(self, frame, object_classes_list): 
@@ -182,20 +189,18 @@ class YOLOInference():
         # This function returns a list because of the pose estimation module:
         # list[0]: boolean (True: some detections available, False: no detections)
         # list[1]: corresponding color frame of the prediction (necessary because in the meanwhile the frame may be updated)
-        # list[2]: corresponding tof (Note: the tof is of the image center, not of the predictions)
-        # list[3]: list of predictions (each item of this list is explained in the <detect> function)
+        # list[2]: list of predictions (each item of this list is explained in the <detect> function)
  
-        if (len(self._color_frame) > 0) and (len(self._tof) > 0):
+        if (len(self._color_frame) > 0):
             color_frame = self._color_frame
             # cv2.imshow("Image window", color_frame)
-            # cv2.waitKey(3)
-            tof = self._tof 
+            # cv2.waitKey(3) 
             predictions = self.detect(frame=color_frame, object_classes_list=object_classes_list) 
             if len(predictions)!=0:
-                results = [True, color_frame, tof, predictions]  
+                results = [True, color_frame, predictions]  
                 return results
 
-        return [False, [], [], []]
+        return [False, [], []]
 
 
 
@@ -230,9 +235,8 @@ class YOLOInference():
 
         # call object_detection 
         # response[0] : bool of the result,  
-        # response[1] : color frame, 
-        # response[2] : TOF, 
-        # response[3] : list of predictions
+        # response[1] : color frame,  
+        # response[2] : list of predictions
 
         if "yolo" in self.what_to_perceive:
             self.detection_response = self.object_detection(self.what_to_perceive['yolo'])

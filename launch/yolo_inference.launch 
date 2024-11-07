@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+
+<launch>
+    <node name="yolo_inference" pkg="hhcm_yolo_ros" type="yolo_inference.py" output="screen">
+    </node>
+</launch>
