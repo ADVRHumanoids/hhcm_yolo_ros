@@ -4,18 +4,18 @@
 import cv2
 import rospy  
 import numpy as np  
-from ultralytics import YOLO  
-import json 
+from ultralytics import YOLO   
 from dataclasses import dataclass
 
 from cv_bridge import CvBridge, CvBridgeError
-from sensor_msgs.msg import Image, CameraInfo, Range 
+from sensor_msgs.msg import Image, CameraInfo 
 
 from hhcm_yolo_ros.msg import ObjectStatus
-from hhcm_yolo_ros.srv import ClientToServerString, ClientToServerStringResponse
+from hhcm_yolo_ros.srv import ClientToServerListString, ClientToServerListStringResponse
 
 # This ROS node implements YOLO Inference 
 # and publish the results on the corresponding topic 
+
  
 @dataclass
 class CameraIntrinsics:
@@ -39,23 +39,29 @@ class YOLOInference():
 
         self.rate = rospy.Rate(30)    
  
+        # Get the parameters
+        PATH_WEIGHTS = rospy.get_param('~weights_path')
+        weights_version = rospy.get_param('~weights_version')
+        image_topic = rospy.get_param('~image_topic')
+        camera_info_topic = rospy.get_param('~camera_info_topic')
+        detection_confidence_threshold = rospy.get_param('~detection_confidence_threshold')
+        cuda_device = rospy.get_param('~cuda_device')
 
-        #initialize variables  
+        # initialize variables  
         self.what_to_perceive = []
         self._color_frame = []                       #store the color frame 
         self._intrinsics= CameraIntrinsics()         #store the camera info
         self.detection_response = []   
 
-        #initialize subscribers 
-        self.img_sub = rospy.Subscriber('/nicla/camera/image_raw', Image, self.getColorFrame)
-        self.camera_info_sub = rospy.Subscriber('/nicla/camera/camera_info', CameraInfo, self.getCameraInfo)
+        # initialize subscribers 
+        self.img_sub = rospy.Subscriber(image_topic, Image, self.getColorFrame)
+        self.camera_info_sub = rospy.Subscriber(camera_info_topic, CameraInfo, self.getCameraInfo)
  
 
-        #initialize networks (loading weights) & useful variables
-        PATH_WEIGHTS = '../weights/'
-
+        # initialize networks (loading weights) & useful variables
+         
         # model for object instance segmentation
-        self.model_detection = YOLO(PATH_WEIGHTS+"yolo11n-seg.pt")  
+        self.model_detection = YOLO(PATH_WEIGHTS+weights_version)  
         # self.model_detection.to('cuda')
 
         # model classes 
@@ -63,7 +69,10 @@ class YOLOInference():
          
 
         # detection threshold 
-        self.detection_confidence_threshold = 0.5
+        self.detection_confidence_threshold = detection_confidence_threshold
+
+        # cuda device 
+        self.cuda_device = cuda_device
 
         # initialize publishers
         # 1. pub object_status
@@ -75,16 +84,15 @@ class YOLOInference():
 
         # initialize services 
         # 1. start what_to_perceive_service
-        self.what_to_perceive_service = rospy.Service('/yolo/what_to_perceive', ClientToServerString, self.what_to_perceive_service) 
+        self.what_to_perceive_service = rospy.Service('/yolo/what_to_perceive', ClientToServerListString, self.what_to_perceive_service) 
          
 
     # Service callback 
     def what_to_perceive_service(self, msg):
         # This service is for receiving a list of "what" to perceive 
-        self.what_to_perceive = msg.data
-        self.what_to_perceive = json.loads(self.what_to_perceive)
+        self.what_to_perceive = msg.data 
 
-        return ClientToServerStringResponse(success=True)
+        return ClientToServerListStringResponse(success=True)
 
     # Callback function to receive the color frame    
     def getColorFrame(self, msg):  
@@ -123,8 +131,8 @@ class YOLOInference():
         # In the returned list there will be only predictions with a confidence above a threshold (self.detection_confidence_threshold).
         
         # YOLO function to predict on a frame using the loaded model
-        results = self.model_detection(source=frame, show=False, save=False, verbose=False, device='cpu')[0] 
-        print(results)
+        results = self.model_detection(source=frame, show=False, save=False, verbose=False, device=self.cuda_device)[0] 
+        # print(results)
         
         if len(results)!= 0 : #case of predictions 
 
@@ -210,7 +218,7 @@ class YOLOInference():
         response = self.detection_response 
         if len(response) != 0 and response[0]:         
 
-            predictions = response[3]  # This is a list of msg_object_status
+            predictions = response[2]  # This is a list of msg_object_status
             
             for obj in predictions:  
                 center_x = obj.bounding_box_center[0]
@@ -238,12 +246,8 @@ class YOLOInference():
         # response[0] : bool of the result,  
         # response[1] : color frame,  
         # response[2] : list of predictions
-
-        if "yolo" in self.what_to_perceive:
-            self.detection_response = self.object_detection(self.what_to_perceive['yolo'])
         
-        self.detection_response = self.object_detection(["bottle"])
-
+        self.detection_response = self.object_detection(self.what_to_perceive)
 
         
     def run(self): 

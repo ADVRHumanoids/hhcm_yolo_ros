@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+
+<launch>
+
+    <arg name="weights_path" default="$(find hhcm_yolo_ros)/weights/" />
+    <arg name="weights_version" default="yolo11n-seg.pt"/>
+    <arg name="image_topic" default="/nicla/camera/image_raw"/>
+    <arg name="camera_info_topic" default="/nicla/camera/camera_info"/>
+    <arg name="detection_confidence_threshold" default='0.5'/>
+    <arg name="cuda_device" default='cpu' doc="Set the cuda device id, e.g. cuda_device:=0 , or 'cpu' if no cuda device available."/> 
+     
+    <node name="yolo_inference" pkg="hhcm_yolo_ros" type="yolo_inference.py" output="screen">
+        <param name="weights_path" value="$(arg weights_path)"/>
+        <param name="weights_version" value="$(arg weights_version)"/>
+        <param name="image_topic" value="$(arg image_topic)"/>
+        <param name="camera_info_topic" value="$(arg camera_info_topic)"/>
+        <param name="detection_confidence_threshold" value="$(arg detection_confidence_threshold)"/>
+        <param name="cuda_device" value="$(arg cuda_device)"/>
+
+    </node>
+</launch>
