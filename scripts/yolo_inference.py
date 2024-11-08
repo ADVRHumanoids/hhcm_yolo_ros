@@ -182,8 +182,7 @@ class YOLOInference():
                         msg_object_status.bounding_box_vertices_meter = [(xyxy[idx][0]-self._intrinsics.cx)/self._intrinsics.fx,(xyxy[idx][1]-self._intrinsics.cy)/self._intrinsics.fy, (xyxy[idx][2]-self._intrinsics.cx)/self._intrinsics.fx, (xyxy[idx][3]-self._intrinsics.cy)/self._intrinsics.fy] 
                         msg_object_status.bounding_box_center_meter = [(xywh[idx][0]-self._intrinsics.cx)/self._intrinsics.fx, (xywh[idx][1]-self._intrinsics.cy)/self._intrinsics.fy] 
                         msg_object_status.bounding_box_wh = [xywh[idx][2], xywh[idx][3]] 
-                        msg_object_status.segmentation_mask = None # TODO 
-                        msg_object_status.pose = None # TODO: maybe another module for this ? 
+                        msg_object_status.segmentation_mask = None # TODO  
 
                         item = [msg_object_status]
                         custom_pred.append(item)  
@@ -195,7 +194,7 @@ class YOLOInference():
     
 
     def object_detection(self, object_classes_list):
-        # This function returns a list because of the pose estimation module:
+        # This function returns a list:
         # list[0]: boolean (True: some detections available, False: no detections)
         # list[1]: corresponding color frame of the prediction (necessary because in the meanwhile the frame may be updated)
         # list[2]: list of predictions (each item of this list is explained in the <detect> function)
