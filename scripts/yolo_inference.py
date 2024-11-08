@@ -101,6 +101,10 @@ class YOLOInference():
             self._color_frame = bridge.imgmsg_to_cv2(msg, "bgr8") 
         except CvBridgeError as e:
             print(e)
+        
+            
+        # self._color_frame = cv2.imread('/home/damigas/Pictures/templates/rel.jpg')
+
         # cv2.imshow("Image window", self._color_frame)
         # cv2.waitKey(3)
 
@@ -132,22 +136,25 @@ class YOLOInference():
         
         # YOLO function to predict on a frame using the loaded model
         results = self.model_detection(source=frame, show=False, save=False, verbose=False, device=self.cuda_device)[0] 
-        # print(results)
+        print("############################################## RESULTS")
+        print(results)
+        print("############################################## BOXES")
+        print(results)
         
         if len(results)!= 0 : #case of predictions 
 
             confidence_list = results.boxes.conf.cpu().numpy()   
-            # print("confidence_list: ", confidence_list)
+            print("confidence_list: ", confidence_list)
             detected_classes_list = results.boxes.cls.cpu().numpy().astype(int)
-            #print("detected_classes_list: ", detected_classes_list)      
+            print("detected_classes_list: ", detected_classes_list)      
              
             custom_pred =[]
             found_classes = {}
 
             for idx, conf in enumerate(confidence_list):
                 id_class = detected_classes_list[idx]
-                #print("id_class: ", id_class)
-                #print("type(id_class): ", type(id_class))
+                print("id_class: ", id_class)
+                print("type(id_class): ", type(id_class))
 
 
                 if conf >= self.detection_confidence_threshold:    
@@ -158,8 +165,10 @@ class YOLOInference():
                         try:    
                             xyxy = results.boxes.xyxy # left top corner (x1,y1) and right bottom corner (x2,y2)
                             xyxy = xyxy.cpu().numpy() 
+                            # print("XYXY: ", xyxy)
                             xywh = results.boxes.xywh  # center (x,y), width and height of the bounding boxes 
                             xywh = xywh.cpu().numpy()  
+                            # print("xywh: ", xyxy)
                         except: 
                             print("Error while extracting bounding box from inference results.")
                             return []
@@ -182,7 +191,7 @@ class YOLOInference():
                         msg_object_status.bounding_box_vertices_meter = [(xyxy[idx][0]-self._intrinsics.cx)/self._intrinsics.fx,(xyxy[idx][1]-self._intrinsics.cy)/self._intrinsics.fy, (xyxy[idx][2]-self._intrinsics.cx)/self._intrinsics.fx, (xyxy[idx][3]-self._intrinsics.cy)/self._intrinsics.fy] 
                         msg_object_status.bounding_box_center_meter = [(xywh[idx][0]-self._intrinsics.cx)/self._intrinsics.fx, (xywh[idx][1]-self._intrinsics.cy)/self._intrinsics.fy] 
                         msg_object_status.bounding_box_wh = [xywh[idx][2], xywh[idx][3]] 
-                        msg_object_status.segmentation_mask = None # TODO  
+                        msg_object_status.segmentation_mask = [] # TODO  
 
                         item = [msg_object_status]
                         custom_pred.append(item)  

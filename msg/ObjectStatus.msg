@@ -1,10 +1,10 @@
 Header header
 string object_class
-string object_ID
+int8 object_ID
 float64 confidence 
-int8[] bounding_box_vertices  
-int8[] bounding_box_center 
+float64[] bounding_box_vertices  
+float64[] bounding_box_center 
 float64[] bounding_box_vertices_meter
 float64[] bounding_box_center_meter
-int8[] bounding_box_wh
+float64[] bounding_box_wh
 int8[] segmentation_mask
