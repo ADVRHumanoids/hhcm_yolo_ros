@@ -7,4 +7,4 @@ float64[] bounding_box_center
 float64[] bounding_box_vertices_meter
 float64[] bounding_box_center_meter
 float64[] bounding_box_wh
-int8[] segmentation_mask
+std_msgs/Float64MultiArray segmentation_mask

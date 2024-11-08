@@ -8,7 +8,8 @@ from ultralytics import YOLO
 from dataclasses import dataclass
 
 from cv_bridge import CvBridge, CvBridgeError
-from sensor_msgs.msg import Image, CameraInfo 
+from sensor_msgs.msg import Image, CameraInfo
+from std_msgs.msg import MultiArrayDimension 
 
 from hhcm_yolo_ros.msg import ObjectStatus
 from hhcm_yolo_ros.srv import ClientToServerListString, ClientToServerListStringResponse
@@ -47,6 +48,7 @@ class YOLOInference():
         detection_confidence_threshold = rospy.get_param('~detection_confidence_threshold')
         cuda_device = rospy.get_param('~cuda_device')
         verbose = rospy.get_param('~verbose')
+        visualize_boundbox = rospy.get_param('~visualize_boundbox')
 
         # initialize variables  
         self.what_to_perceive = []
@@ -77,6 +79,9 @@ class YOLOInference():
         # verbose 
         self.verbose = verbose
 
+        # visualize_boundbox
+        self.visualize_boundbox = visualize_boundbox
+
         # initialize publishers
         # 1. pub object_status
         self.object_status_pub = rospy.Publisher('/yolo/object_status', ObjectStatus, queue_size =10) 
@@ -103,10 +108,6 @@ class YOLOInference():
             self._color_frame = bridge.imgmsg_to_cv2(msg, "bgr8") 
         except CvBridgeError as e:
             print(e)
-        
-            
-        # self._color_frame = cv2.imread('/home/damigas/Pictures/templates/rel.jpg')
-
         # cv2.imshow("Image window", self._color_frame)
         # cv2.waitKey(3)
 
@@ -196,12 +197,23 @@ class YOLOInference():
                         msg_object_status.bounding_box_vertices_meter = [(xyxy[idx][0]-self._intrinsics.cx)/self._intrinsics.fx,(xyxy[idx][1]-self._intrinsics.cy)/self._intrinsics.fy, (xyxy[idx][2]-self._intrinsics.cx)/self._intrinsics.fx, (xyxy[idx][3]-self._intrinsics.cy)/self._intrinsics.fy] 
                         msg_object_status.bounding_box_center_meter = [(xywh[idx][0]-self._intrinsics.cx)/self._intrinsics.fx, (xywh[idx][1]-self._intrinsics.cy)/self._intrinsics.fy] 
                         msg_object_status.bounding_box_wh = [xywh[idx][2], xywh[idx][3]] 
-                        msg_object_status.segmentation_mask = masks[idx]   
 
-                        item = [msg_object_status]
-                        custom_pred.append(item)  
+                        shape_maks = masks[idx].shape
+                        flattened_mask = masks[idx].flatten()
+                        msg_object_status.segmentation_mask.data = flattened_mask
+                        msg_object_status.segmentation_mask.layout.dim.append(MultiArrayDimension())
+                        msg_object_status.segmentation_mask.layout.dim[0].label = 'rows'
+                        msg_object_status.segmentation_mask.layout.dim[0].size = shape_maks[0]
+                        msg_object_status.segmentation_mask.layout.dim[0].stride = shape_maks[1]
+                        msg_object_status.segmentation_mask.layout.dim.append(MultiArrayDimension())
+                        msg_object_status.segmentation_mask.layout.dim[1].label = 'cols'
+                        msg_object_status.segmentation_mask.layout.dim[1].size = shape_maks[1]
+                        msg_object_status.segmentation_mask.layout.dim[1].stride = 1
+
+                        custom_pred.append(msg_object_status)  
 
                         self.object_status_pub.publish(msg_object_status)
+
             return custom_pred
         
         return []
@@ -227,28 +239,35 @@ class YOLOInference():
 
 
     # Draw bounding box from YOLO Inference 
-    def draw_boundbox_yolo(self, image):  
-        response = self.detection_response 
-        if len(response) != 0 and response[0]:         
+    def draw_boundbox_yolo(self):  
+        response = self.detection_response         
 
-            predictions = response[2]  # This is a list of msg_object_status
-            
-            for obj in predictions:  
-                center_x = obj.bounding_box_center[0]
-                center_y = obj.bounding_box_center[1]
-                width = obj.bounding_box_wh[0]
-                height = obj.bounding_box_wh[1]
+        if len(response) != 0:
+ 
+            image = response[1]           
+            if response[0]:         
 
-                # Calculate the coordinates of the top-left and bottom-right corners of the rectangle
-                x1 = int(center_x - width / 2)
-                y1 = int(center_y - height / 2)
-                x2 = int(center_x + width / 2)
-                y2 = int(center_y + height / 2)
+                predictions = response[2]  # This is a list of msg_object_status
+                
+                for obj in predictions:   
+                    center_x = obj.bounding_box_center[0]
+                    center_y = obj.bounding_box_center[1]
+                    width = obj.bounding_box_wh[0]
+                    height = obj.bounding_box_wh[1]
 
-                # Draw the rectangle on the image
-                cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    # Calculate the coordinates of the top-left and bottom-right corners of the rectangle
+                    x1 = int(center_x - width / 2)
+                    y1 = int(center_y - height / 2)
+                    x2 = int(center_x + width / 2)
+                    y2 = int(center_y + height / 2)
 
-        return image
+                    # Draw the rectangle on the image
+                    # TODO: change color depending on class
+                    cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            return image
+    
+        return []
 
 
 
@@ -260,7 +279,15 @@ class YOLOInference():
         # response[1] : color frame,  
         # response[2] : list of predictions
         
-        self.detection_response = self.object_detection(self.what_to_perceive)
+        if len(self.what_to_perceive) != 0:
+            self.detection_response = self.object_detection(self.what_to_perceive)
+
+        if self.visualize_boundbox: 
+            image = self.draw_boundbox_yolo()
+            if len(image) != 0: 
+                cv2.imshow("Image window", image)
+                cv2.waitKey(1) 
+
 
         
     def run(self): 

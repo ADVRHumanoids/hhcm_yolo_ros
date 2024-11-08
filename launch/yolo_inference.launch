@@ -9,6 +9,7 @@
     <arg name="detection_confidence_threshold" default='0.5'/>
     <arg name="cuda_device" default='cpu' doc="Set the cuda device id, e.g. cuda_device:=0 , or 'cpu' if no cuda device available."/> 
     <arg name="verbose" default='false'/> 
+    <arg name="visualize_boundbox" default='false'/> 
 
     <node name="yolo_inference" pkg="hhcm_yolo_ros" type="yolo_inference.py" output="screen">
         <param name="weights_path" value="$(arg weights_path)"/>
@@ -18,6 +19,7 @@
         <param name="detection_confidence_threshold" value="$(arg detection_confidence_threshold)"/>
         <param name="cuda_device" value="$(arg cuda_device)"/>
         <param name="verbose" value="$(arg verbose)"/>
+        <param name="visualize_boundbox" value="$(arg visualize_boundbox)"/>
 
     </node>
 </launch>
