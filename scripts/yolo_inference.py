@@ -46,6 +46,7 @@ class YOLOInference():
         camera_info_topic = rospy.get_param('~camera_info_topic')
         detection_confidence_threshold = rospy.get_param('~detection_confidence_threshold')
         cuda_device = rospy.get_param('~cuda_device')
+        verbose = rospy.get_param('~verbose')
 
         # initialize variables  
         self.what_to_perceive = []
@@ -67,12 +68,14 @@ class YOLOInference():
         # model classes 
         self.model_detection_classes = self.model_detection.names # dictionary {id_number: "class_name"}
          
-
         # detection threshold 
         self.detection_confidence_threshold = detection_confidence_threshold
 
         # cuda device 
         self.cuda_device = cuda_device
+
+        # verbose 
+        self.verbose = verbose
 
         # initialize publishers
         # 1. pub object_status
@@ -81,7 +84,6 @@ class YOLOInference():
             rospy.loginfo("Inference: waiting for subscriber to connect.")
             self.rate.sleep()"""
          
-
         # initialize services 
         # 1. start what_to_perceive_service
         self.what_to_perceive_service = rospy.Service('/yolo/what_to_perceive', ClientToServerListString, self.what_to_perceive_service) 
@@ -136,42 +138,45 @@ class YOLOInference():
         
         # YOLO function to predict on a frame using the loaded model
         results = self.model_detection(source=frame, show=False, save=False, verbose=False, device=self.cuda_device)[0] 
-        print("############################################## RESULTS")
-        print(results)
-        print("############################################## BOXES")
-        print(results)
-        
+                
         if len(results)!= 0 : #case of predictions 
 
             confidence_list = results.boxes.conf.cpu().numpy()   
-            print("confidence_list: ", confidence_list)
             detected_classes_list = results.boxes.cls.cpu().numpy().astype(int)
-            print("detected_classes_list: ", detected_classes_list)      
+
+            if self.verbose: 
+                print("Detected classes ID: ", detected_classes_list)   
+                detected_classes_name = [ self.model_detection_classes[i] for i in detected_classes_list ] 
+                print("Detected classes name: ", detected_classes_name)
+                print("Confidence list of detected classes: ", confidence_list)  
+                
+            try:    
+                xyxy = results.boxes.xyxy # left top corner (x1,y1) and right bottom corner (x2,y2)
+                xyxy = xyxy.cpu().numpy()  
+                
+                xywh = results.boxes.xywh  # center (x,y), width and height of the bounding boxes 
+                xywh = xywh.cpu().numpy()   
+
+                masks = results.masks.xy 
+
+            except: 
+                print("Error while extracting bounding boxes and masks from inference results.")
+                return []
+            
              
             custom_pred =[]
             found_classes = {}
 
             for idx, conf in enumerate(confidence_list):
                 id_class = detected_classes_list[idx]
-                print("id_class: ", id_class)
-                print("type(id_class): ", type(id_class))
+                # print("id_class: ", id_class)
+                # print("type(id_class): ", type(id_class))
 
 
                 if conf >= self.detection_confidence_threshold:    
                     class_name = self.model_detection_classes[id_class]
                     
                     if class_name in object_classes_list:  
-
-                        try:    
-                            xyxy = results.boxes.xyxy # left top corner (x1,y1) and right bottom corner (x2,y2)
-                            xyxy = xyxy.cpu().numpy() 
-                            # print("XYXY: ", xyxy)
-                            xywh = results.boxes.xywh  # center (x,y), width and height of the bounding boxes 
-                            xywh = xywh.cpu().numpy()  
-                            # print("xywh: ", xyxy)
-                        except: 
-                            print("Error while extracting bounding box from inference results.")
-                            return []
         
                         # initialize message corresponding to objects instance segmentation & detection 
                         msg_object_status = ObjectStatus()   
@@ -191,7 +196,7 @@ class YOLOInference():
                         msg_object_status.bounding_box_vertices_meter = [(xyxy[idx][0]-self._intrinsics.cx)/self._intrinsics.fx,(xyxy[idx][1]-self._intrinsics.cy)/self._intrinsics.fy, (xyxy[idx][2]-self._intrinsics.cx)/self._intrinsics.fx, (xyxy[idx][3]-self._intrinsics.cy)/self._intrinsics.fy] 
                         msg_object_status.bounding_box_center_meter = [(xywh[idx][0]-self._intrinsics.cx)/self._intrinsics.fx, (xywh[idx][1]-self._intrinsics.cy)/self._intrinsics.fy] 
                         msg_object_status.bounding_box_wh = [xywh[idx][2], xywh[idx][3]] 
-                        msg_object_status.segmentation_mask = [] # TODO  
+                        msg_object_status.segmentation_mask = masks[idx]   
 
                         item = [msg_object_status]
                         custom_pred.append(item)  
