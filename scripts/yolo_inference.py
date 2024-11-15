@@ -3,21 +3,18 @@
  
 import cv2
 import rospy  
-import numpy as np  
 from ultralytics import YOLO   
 from dataclasses import dataclass
 
 from cv_bridge import CvBridge, CvBridgeError
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import Image, CompressedImage, CameraInfo
 from std_msgs.msg import MultiArrayDimension 
 
 from hhcm_yolo_ros.msg import ObjectStatus
 from hhcm_yolo_ros.srv import ClientToServerListString, ClientToServerListStringResponse
 
 # This ROS node implements YOLO Inference 
-# and publish the results on the corresponding topic 
-
- 
+# and publish the results on the corresponding topic  
 @dataclass
 class CameraIntrinsics:
     width: int = 0
@@ -36,7 +33,8 @@ class CameraIntrinsics:
 class YOLOInference():
     def __init__(self):
         # Initialize ROS node 
-        rospy.init_node('yolo_inference', anonymous=False)
+        self.node_name = 'yolo_inference'
+        rospy.init_node(self.node_name, anonymous=False)
 
         self.rate = rospy.Rate(30)    
  
@@ -44,56 +42,57 @@ class YOLOInference():
         PATH_WEIGHTS = rospy.get_param('~weights_path')
         weights_version = rospy.get_param('~weights_version')
         image_topic = rospy.get_param('~image_topic')
+        if image_topic.endswith("compressed"):
+            self.sub_compressed = True
+        else:
+            self.sub_compressed = False
         camera_info_topic = rospy.get_param('~camera_info_topic')
-        detection_confidence_threshold = rospy.get_param('~detection_confidence_threshold')
-        cuda_device = rospy.get_param('~cuda_device')
-        verbose = rospy.get_param('~verbose')
-        visualize_boundbox = rospy.get_param('~visualize_boundbox')
+        self.detection_confidence_threshold = rospy.get_param('~detection_confidence_threshold')
+        self.cuda_device = rospy.get_param('~cuda_device')
+        self.verbose = rospy.get_param('~verbose')
+        self.visualize_boundbox = rospy.get_param('~visualize_boundbox')
+        self.initial_class = rospy.get_param('~initial_class')
 
         # initialize variables  
         self.what_to_perceive = []
+        if self.initial_class:
+            self.what_to_perceive.append(self.initial_class)
         self._color_frame = []                       #store the color frame 
         self._intrinsics= CameraIntrinsics()         #store the camera info
         self.detection_response = []   
+        self.bridge = CvBridge()
+        self.image_received_header = Image.header
 
         # initialize subscribers 
-        self.img_sub = rospy.Subscriber(image_topic, Image, self.getColorFrame)
+        if self.sub_compressed:
+            self.img_sub = rospy.Subscriber(image_topic, CompressedImage, self.getColorFrame)
+        else:
+            self.img_sub = rospy.Subscriber(image_topic, Image, self.getColorFrame)            
+
         self.camera_info_sub = rospy.Subscriber(camera_info_topic, CameraInfo, self.getCameraInfo)
- 
 
         # initialize networks (loading weights) & useful variables
-         
-        # model for object instance segmentation
         self.model_detection = YOLO(PATH_WEIGHTS+weights_version)  
         # self.model_detection.to('cuda')
 
-        # model classes 
         self.model_detection_classes = self.model_detection.names # dictionary {id_number: "class_name"}
-         
-        # detection threshold 
-        self.detection_confidence_threshold = detection_confidence_threshold
-
-        # cuda device 
-        self.cuda_device = cuda_device
-
-        # verbose 
-        self.verbose = verbose
-
-        # visualize_boundbox
-        self.visualize_boundbox = visualize_boundbox
 
         # initialize publishers
         # 1. pub object_status
-        self.object_status_pub = rospy.Publisher('/yolo/object_status', ObjectStatus, queue_size =10) 
+        self.object_status_pub = rospy.Publisher(self.node_name+'/object_status', ObjectStatus, queue_size =1) 
         """while self.object_status_pub.get_num_connections() == 0:
             rospy.loginfo("Inference: waiting for subscriber to connect.")
             self.rate.sleep()"""
+            
+        if self.visualize_boundbox:
+            self.visualize_boundbox_pub = rospy.Publisher(
+                self.node_name+'/visualize_boundbox/image_raw/compressed', CompressedImage, queue_size =1)
          
         # initialize services 
         # 1. start what_to_perceive_service
-        self.what_to_perceive_service = rospy.Service('/yolo/what_to_perceive', ClientToServerListString, self.what_to_perceive_service) 
+        self.what_to_perceive_service = rospy.Service(
+            self.node_name+'/what_to_perceive', ClientToServerListString, self.what_to_perceive_service) 
          
-
     # Service callback 
     def what_to_perceive_service(self, msg):
         # This service is for receiving a list of "what" to perceive 
@@ -103,15 +102,17 @@ class YOLOInference():
 
     # Callback function to receive the color frame    
     def getColorFrame(self, msg):  
-        bridge = CvBridge()
         try:
-            self._color_frame = bridge.imgmsg_to_cv2(msg, "bgr8") 
+            if self.sub_compressed:
+                self._color_frame = self.bridge.compressed_imgmsg_to_cv2(msg, "bgr8")
+            else:
+                self._color_frame = self.bridge.imgmsg_to_cv2(msg, "bgr8") 
+            self.image_received_header = msg.header
         except CvBridgeError as e:
             print(e)
         # cv2.imshow("Image window", self._color_frame)
         # cv2.waitKey(3)
 
-    
     # Callback function to receive the camera info
     def getCameraInfo(self, cameraInfo): 
         self._intrinsics.width = cameraInfo.width
@@ -122,9 +123,8 @@ class YOLOInference():
         self._intrinsics.fy = cameraInfo.K[4]
         self._intrinsics.model  = cameraInfo.distortion_model
         self._intrinsics.coeffs = [i for i in cameraInfo.D]  
+        self.camera_info_sub.unregister()
 
-     
-    
     # Inference functions 
     def detect(self, frame, object_classes_list): 
         # This function calls the model_detection for instance segmentation
@@ -214,6 +214,7 @@ class YOLOInference():
 
                         self.object_status_pub.publish(msg_object_status)
 
+
             return custom_pred
         
         return []
@@ -264,11 +265,11 @@ class YOLOInference():
                     # Draw the rectangle on the image
                     # TODO: change color depending on class
                     cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.putText(image, obj.object_class + " {:.2f}".format(obj.confidence), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
-            return image
+                return self.bridge.cv2_to_compressed_imgmsg(image)
     
-        return []
-
+        return self.bridge.cv2_to_compressed_imgmsg(self._color_frame)
 
 
     def run_inference(self):
@@ -284,10 +285,8 @@ class YOLOInference():
 
         if self.visualize_boundbox: 
             image = self.draw_boundbox_yolo()
-            if len(image) != 0: 
-                cv2.imshow("Image window", image)
-                cv2.waitKey(1) 
-
+            image.header = self.image_received_header
+            self.visualize_boundbox_pub.publish(image)
 
         
     def run(self): 
@@ -296,16 +295,14 @@ class YOLOInference():
             # rospy.loginfo("Running Inference")
             self.rate.sleep()
 
-        
-def main():
+    
+if __name__ == '__main__':
+
+    node = YOLOInference()
+
     try:
-        node = YOLOInference()
         node.run()
     except rospy.ROSInterruptException:
         pass
-     
-
-if __name__ == '__main__':
-    main()
    
  
