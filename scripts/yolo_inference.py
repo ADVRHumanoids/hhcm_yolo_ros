@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from cv_bridge import CvBridge, CvBridgeError
 from sensor_msgs.msg import Image, CompressedImage, CameraInfo
-from std_msgs.msg import MultiArrayDimension 
+from std_msgs.msg import MultiArrayDimension
 
 from hhcm_yolo_ros.msg import ObjectStatus
 from hhcm_yolo_ros.srv import ClientToServerListString, ClientToServerListStringResponse
@@ -44,8 +44,11 @@ class YOLOInference():
         image_topic = rospy.get_param('~image_topic')
         if image_topic.endswith("compressed"):
             self.sub_compressed = True
+            rospy.loginfo("Receiving compressed images")
         else:
             self.sub_compressed = False
+            rospy.loginfo("Receiving raw images")
+
         camera_info_topic = rospy.get_param('~camera_info_topic')
         self.detection_confidence_threshold = rospy.get_param('~detection_confidence_threshold')
         self.cuda_device = rospy.get_param('~cuda_device')
@@ -67,7 +70,11 @@ class YOLOInference():
         if self.sub_compressed:
             self.img_sub = rospy.Subscriber(image_topic, CompressedImage, self.getColorFrame)
         else:
-            self.img_sub = rospy.Subscriber(image_topic, Image, self.getColorFrame)            
+            self.img_sub = rospy.Subscriber(image_topic, Image, self.getColorFrame)       
+
+        self.image_received_header_seq = 0
+        self.image_received_header_stamp = rospy.Time.now()
+        self.image_received_header_frame_id = ""
 
         self.camera_info_sub = rospy.Subscriber(camera_info_topic, CameraInfo, self.getCameraInfo)
 
@@ -94,9 +101,9 @@ class YOLOInference():
             self.node_name+'/what_to_perceive', ClientToServerListString, self.what_to_perceive_service) 
          
     # Service callback 
-    def what_to_perceive_service(self, msg):
+    def what_to_perceive_service(self, srv):
         # This service is for receiving a list of "what" to perceive 
-        self.what_to_perceive = msg.data 
+        self.what_to_perceive = srv.data 
 
         return ClientToServerListStringResponse(success=True)
 
@@ -107,7 +114,10 @@ class YOLOInference():
                 self._color_frame = self.bridge.compressed_imgmsg_to_cv2(msg, "bgr8")
             else:
                 self._color_frame = self.bridge.imgmsg_to_cv2(msg, "bgr8") 
-            self.image_received_header = msg.header
+            self.image_received_header_seq = msg.header.seq
+            self.image_received_header_stamp = msg.header.stamp
+            self.image_received_header_frame_id = msg.header.frame_id
+
         except CvBridgeError as e:
             print(e)
         # cv2.imshow("Image window", self._color_frame)
@@ -279,13 +289,21 @@ class YOLOInference():
         # response[0] : bool of the result,  
         # response[1] : color frame,  
         # response[2] : list of predictions
+
+        if len(self._color_frame) == 0:
+            rospy.logwarn_throttle(2, "Received image is empty or no received at all!")
+            return CompressedImage()
+
         
         if len(self.what_to_perceive) != 0:
             self.detection_response = self.object_detection(self.what_to_perceive)
 
         if self.visualize_boundbox: 
             image = self.draw_boundbox_yolo()
-            image.header = self.image_received_header
+            image.header.seq = self.image_received_header_seq
+            image.header.stamp = self.image_received_header_stamp
+            image.header.frame_id = self.image_received_header_frame_id
+            
             self.visualize_boundbox_pub.publish(image)
 
         
