@@ -2,7 +2,7 @@
 
 <launch>
 
-    <arg name="weights_path" default="$(find hhcm_yolo_ros)/weights/" />
+    <arg name="weights_path" default="$(find hhcm_yolo_ros)/weights" />
     <arg name="weights_version" default="yolo11n-seg.pt"/>
     <arg name="image_topic" default="/nicla/camera/image_raw"/>
     <arg name="camera_info_topic" default="/nicla/camera/camera_info"/>

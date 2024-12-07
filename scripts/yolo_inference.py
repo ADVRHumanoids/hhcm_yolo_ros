@@ -1,6 +1,7 @@
 #!/usr/bin/env python3 
 # -*- coding: utf-8 -*-
- 
+
+import os
 import cv2
 import rospy  
 from ultralytics import YOLO   
@@ -39,7 +40,7 @@ class YOLOInference():
         self.rate = rospy.Rate(30)    
  
         # Get the parameters
-        PATH_WEIGHTS = rospy.get_param('~weights_path')
+        weights_path = rospy.get_param('~weights_path')
         weights_version = rospy.get_param('~weights_version')
         image_topic = rospy.get_param('~image_topic')
         if image_topic.endswith("compressed"):
@@ -78,8 +79,9 @@ class YOLOInference():
 
         self.camera_info_sub = rospy.Subscriber(camera_info_topic, CameraInfo, self.getCameraInfo)
 
-        # initialize networks (loading weights) & useful variables
-        self.model_detection = YOLO(PATH_WEIGHTS+weights_version)  
+        # initialize networks (loading weights) & useful variables 
+        path_to_weights = os.path.join(weights_path, weights_version)
+        self.model_detection = YOLO(path_to_weights) 
         # self.model_detection.to('cuda')
 
         self.model_detection_classes = self.model_detection.names # dictionary {id_number: "class_name"}
