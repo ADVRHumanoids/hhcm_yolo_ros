@@ -294,7 +294,7 @@ class YOLOInference():
 
         if len(self._color_frame) == 0:
             rospy.logwarn_throttle(2, "Received image is empty or no received at all!")
-            return CompressedImage()
+            return
 
         
         if len(self.what_to_perceive) != 0:
