@@ -55,12 +55,10 @@ class YOLOInference():
         self.cuda_device = rospy.get_param('~cuda_device')
         self.verbose = rospy.get_param('~verbose')
         self.visualize_boundbox = rospy.get_param('~visualize_boundbox')
-        self.initial_class = rospy.get_param('~initial_class')
+        self.initial_classes = rospy.get_param('~initial_class')
 
         # initialize variables  
         self.what_to_perceive = []
-        if self.initial_class:
-            self.what_to_perceive.append(self.initial_class)
         self._color_frame = []                       #store the color frame 
         self._intrinsics= CameraIntrinsics()         #store the camera info
         self.detection_response = []   
@@ -86,6 +84,16 @@ class YOLOInference():
 
         self.model_detection_classes = self.model_detection.names # dictionary {id_number: "class_name"}
 
+        if type(self.initial_classes) == list:
+            self.what_to_perceive = self.initial_classes
+        elif self.initial_classes == "*":
+            self.what_to_perceive = list(self.model_detection_classes.values())
+        elif self.initial_classes:
+            if self.initial_classes in self.model_detection_classes.values():
+                self.what_to_perceive = [self.initial_classes]
+            else:
+                rospy.logwarn(f"Initial class '{self.initial_classes}' not found in the model classes. Ignoring it.")
+
         # initialize publishers
         # 1. pub object_status
         self.object_status_pub = rospy.Publisher(self.node_name+'/object_status', ObjectStatus, queue_size =1) 
@@ -101,12 +109,26 @@ class YOLOInference():
         # 1. start what_to_perceive_service
         self.what_to_perceive_service = rospy.Service(
             self.node_name+'/what_to_perceive', ClientToServerListString, self.what_to_perceive_service) 
+        
+        if self.verbose:
+            rospy.loginfo(f"Available classes:\n{self.model_detection_classes}")
+            rospy.loginfo(f"Selected classes:\n{self.what_to_perceive}")
          
     # Service callback 
     def what_to_perceive_service(self, srv):
         # This service is for receiving a list of "what" to perceive 
-        self.what_to_perceive = srv.data 
+        self.what_to_perceive = []
+        for wanted_cat in srv.data :
+            if wanted_cat not in self.model_detection_classes.values():
+                rospy.logwarn(f"Class '{wanted_cat}' not found in the model classes. Ignoring it.")
+                continue
+            self.what_to_perceive.append(wanted_cat)
 
+        rospy.loginfo(f"Called what to perceive server: selected classes:\n{self.what_to_perceive}")
+            
+        if len(self.what_to_perceive) == 0:
+            return ClientToServerListStringResponse(success=False)
+        
         return ClientToServerListStringResponse(success=True)
 
     # Callback function to receive the color frame    
@@ -121,7 +143,7 @@ class YOLOInference():
             self.image_received_header_frame_id = msg.header.frame_id
 
         except CvBridgeError as e:
-            print(e)
+            rospy.logerr(e)
         # cv2.imshow("Image window", self._color_frame)
         # cv2.waitKey(3)
 
@@ -158,22 +180,27 @@ class YOLOInference():
             detected_classes_list = results.boxes.cls.cpu().numpy().astype(int)
 
             if self.verbose: 
-                print("Detected classes ID: ", detected_classes_list)   
+                rospy.loginfo(f"Detected classes ID: {detected_classes_list}")   
                 detected_classes_name = [ self.model_detection_classes[i] for i in detected_classes_list ] 
-                print("Detected classes name: ", detected_classes_name)
-                print("Confidence list of detected classes: ", confidence_list)  
+                rospy.loginfo(f"Detected classes name: {detected_classes_name}")
+                rospy.loginfo(f"Confidence list of detected classes: {confidence_list}")  
                 
-            try:    
+            try:
                 xyxy = results.boxes.xyxy # left top corner (x1,y1) and right bottom corner (x2,y2)
                 xyxy = xyxy.cpu().numpy()  
                 
                 xywh = results.boxes.xywh  # center (x,y), width and height of the bounding boxes 
                 xywh = xywh.cpu().numpy()   
 
-                masks = results.masks.xy 
+                if results.masks:
+                    masks = results.masks.xy 
+                else:
+                    if self.verbose:
+                        rospy.loginfo_once(10, "No masks results available. Are you sure you are running a Segmentation model?")
+                    masks = []
 
             except: 
-                print("Error while extracting bounding boxes and masks from inference results.")
+                rospy.logerr("Error while extracting bounding boxes and masks from inference results.")
                 return []
             
              
@@ -210,17 +237,17 @@ class YOLOInference():
                         msg_object_status.bounding_box_center_meter = [(xywh[idx][0]-self._intrinsics.cx)/self._intrinsics.fx, (xywh[idx][1]-self._intrinsics.cy)/self._intrinsics.fy] 
                         msg_object_status.bounding_box_wh = [xywh[idx][2], xywh[idx][3]] 
 
-                        shape_maks = masks[idx].shape
-                        flattened_mask = masks[idx].flatten()
-                        msg_object_status.segmentation_mask.data = flattened_mask
-                        msg_object_status.segmentation_mask.layout.dim.append(MultiArrayDimension())
-                        msg_object_status.segmentation_mask.layout.dim[0].label = 'rows'
-                        msg_object_status.segmentation_mask.layout.dim[0].size = shape_maks[0]
-                        msg_object_status.segmentation_mask.layout.dim[0].stride = shape_maks[1]
-                        msg_object_status.segmentation_mask.layout.dim.append(MultiArrayDimension())
-                        msg_object_status.segmentation_mask.layout.dim[1].label = 'cols'
-                        msg_object_status.segmentation_mask.layout.dim[1].size = shape_maks[1]
-                        msg_object_status.segmentation_mask.layout.dim[1].stride = 1
+                        if len(masks) != 0:
+                            shape_maks = masks[idx].shape
+                            msg_object_status.segmentation_mask.data = masks[idx].flatten()
+                            msg_object_status.segmentation_mask.layout.dim.append(MultiArrayDimension())
+                            msg_object_status.segmentation_mask.layout.dim[0].label = 'rows'
+                            msg_object_status.segmentation_mask.layout.dim[0].size = shape_maks[0]
+                            msg_object_status.segmentation_mask.layout.dim[0].stride = shape_maks[1]
+                            msg_object_status.segmentation_mask.layout.dim.append(MultiArrayDimension())
+                            msg_object_status.segmentation_mask.layout.dim[1].label = 'cols'
+                            msg_object_status.segmentation_mask.layout.dim[1].size = shape_maks[1]
+                            msg_object_status.segmentation_mask.layout.dim[1].stride = 1
 
                         custom_pred.append(msg_object_status)  
 
@@ -253,16 +280,16 @@ class YOLOInference():
 
     # Draw bounding box from YOLO Inference 
     def draw_boundbox_yolo(self):  
-        response = self.detection_response         
 
-        if len(response) != 0:
+        if len(self.detection_response) != 0:
+
+            image = self.detection_response[1]           
+            if self.detection_response[0]:         
+
+                predictions = self.detection_response[2]  # This is a list of msg_object_status
+
+                for obj in predictions:
  
-            image = response[1]           
-            if response[0]:         
-
-                predictions = response[2]  # This is a list of msg_object_status
-                
-                for obj in predictions:   
                     center_x = obj.bounding_box_center[0]
                     center_y = obj.bounding_box_center[1]
                     width = obj.bounding_box_wh[0]
@@ -288,15 +315,14 @@ class YOLOInference():
         # Loop function: at each cycle run the inference on the updated data
 
         # call object_detection 
-        # response[0] : bool of the result,  
-        # response[1] : color frame,  
-        # response[2] : list of predictions
+        # self.detection_response[0] : bool of the result,  
+        # self.detection_response[1] : color frame,  
+        # self.detection_response[2] : list of predictions
 
         if len(self._color_frame) == 0:
             rospy.logwarn_throttle(2, "Received image is empty or no received at all!")
             return
 
-        
         if len(self.what_to_perceive) != 0:
             self.detection_response = self.object_detection(self.what_to_perceive)
 
@@ -325,4 +351,3 @@ if __name__ == '__main__':
     except rospy.ROSInterruptException:
         pass
    
- 
