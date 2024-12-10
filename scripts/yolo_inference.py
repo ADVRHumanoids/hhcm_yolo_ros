@@ -16,6 +16,43 @@ from hhcm_yolo_ros.srv import ClientToServerListString, ClientToServerListString
 
 # This ROS node implements YOLO Inference 
 # and publish the results on the corresponding topic  
+
+# give triples of 30 different colors
+rgb_colors = [
+    (255, 0, 0),     # Red
+    (0, 255, 0),     # Green
+    (0, 0, 255),     # Blue
+    (255, 255, 0),   # Yellow
+    (0, 255, 255),   # Cyan
+    (255, 0, 255),   # Magenta
+    (128, 0, 0),     # Maroon
+    (0, 128, 0),     # Dark Green
+    (0, 0, 128),     # Navy
+    (128, 128, 0),   # Olive
+    (128, 0, 128),   # Purple
+    (0, 128, 128),   # Teal
+    (192, 192, 192), # Silver
+    (128, 128, 128), # Gray
+    (255, 165, 0),   # Orange
+    (255, 20, 147),  # Deep Pink
+    (0, 100, 0),     # Dark Green
+    (75, 0, 130),    # Indigo
+    (238, 130, 238), # Violet
+    (173, 216, 230), # Light Blue
+    (255, 192, 203), # Pink
+    (244, 164, 96),  # Sandy Brown
+    (46, 139, 87),   # Sea Green
+    (210, 105, 30),  # Chocolate
+    (0, 191, 255),   # Deep Sky Blue
+    (70, 130, 180),  # Steel Blue
+    (123, 104, 238), # Medium Slate Blue
+    (220, 20, 60),   # Crimson
+    (250, 128, 114), # Salmon
+    (154, 205, 50),  # Yellow Green
+]
+
+
+
 @dataclass
 class CameraIntrinsics:
     width: int = 0
@@ -229,6 +266,7 @@ class YOLOInference():
                             available_obj_id = 0
 
                         msg_object_status.object_class = class_name 
+                        msg_object_status.object_class_id = id_class 
                         msg_object_status.object_ID = available_obj_id 
                         msg_object_status.confidence = conf 
                         msg_object_status.bounding_box_vertices = [xyxy[idx][0],xyxy[idx][1], xyxy[idx][2], xyxy[idx][3]] 
@@ -302,8 +340,7 @@ class YOLOInference():
                     y2 = int(center_y + height / 2)
 
                     # Draw the rectangle on the image
-                    # TODO: change color depending on class
-                    cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    cv2.rectangle(image, (x1, y1), (x2, y2), rgb_colors[obj.object_class_id % len(rgb_colors)], 2)
                     cv2.putText(image, obj.object_class + " {:.2f}".format(obj.confidence), (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
                 return self.bridge.cv2_to_compressed_imgmsg(image)

@@ -1,5 +1,6 @@
 Header header
 string object_class
+int8 object_class_id
 int8 object_ID
 float64 confidence 
 float64[] bounding_box_vertices  
