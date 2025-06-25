@@ -12,7 +12,7 @@
     <arg name="visualize_boundbox" default='false'/> 
     <arg name="initial_class" default=''/> 
 
-    <node name="yolo_inference" pkg="hhcm_yolo_ros" type="yolo_inference.py" output="screen">
+    <node name="yolo_inference" pkg="hhcm_yolo_ros" type="yolo_inference" output="screen">
         <param name="weights_path" value="$(arg weights_path)"/>
         <param name="weights_version" value="$(arg weights_version)"/>
         <param name="image_topic" value="$(arg image_topic)"/>

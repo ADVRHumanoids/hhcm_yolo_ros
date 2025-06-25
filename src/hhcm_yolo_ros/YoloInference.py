@@ -82,10 +82,10 @@ class YOLOInference():
         image_topic = rospy.get_param('~image_topic')
         if image_topic.endswith("compressed"):
             self.sub_compressed = True
-            rospy.loginfo("Receiving compressed images")
+            rospy.loginfo("Subscribed to compressed images")
         else:
             self.sub_compressed = False
-            rospy.loginfo("Receiving raw images")
+            rospy.loginfo("Subscribed to raw images")
 
         camera_info_topic = rospy.get_param('~camera_info_topic')
         self.detection_confidence_threshold = rospy.get_param('~detection_confidence_threshold')
@@ -112,7 +112,17 @@ class YOLOInference():
         self.image_received_header_stamp = rospy.Time.now()
         self.image_received_header_frame_id = ""
 
-        self.camera_info_sub = rospy.Subscriber(camera_info_topic, CameraInfo, self.getCameraInfo)
+        rospy.loginfo(f"waiting for cam info on: {camera_info_topic}...")
+        cameraInfo = rospy.wait_for_message(camera_info_topic, CameraInfo)
+        self._intrinsics.width = cameraInfo.width
+        self._intrinsics.height = cameraInfo.height
+        self._intrinsics.cx = cameraInfo.K[2]
+        self._intrinsics.cy = cameraInfo.K[5]
+        self._intrinsics.fx = cameraInfo.K[0]
+        self._intrinsics.fy = cameraInfo.K[4]
+        self._intrinsics.model  = cameraInfo.distortion_model
+        self._intrinsics.coeffs = [i for i in cameraInfo.D]  
+        rospy.loginfo(f"... cam info arrived: {self._intrinsics}")
 
         # initialize networks (loading weights) & useful variables 
         path_to_weights = os.path.join(weights_path, weights_version)
@@ -147,6 +157,7 @@ class YOLOInference():
         self.what_to_perceive_service = rospy.Service(
             self.node_name+'/what_to_perceive', ClientToServerListString, self.what_to_perceive_service) 
         
+        rospy.loginfo("Model loaded:" + path_to_weights)
         if self.verbose:
             rospy.loginfo(f"Available classes:\n{self.model_detection_classes}")
             rospy.loginfo(f"Selected classes:\n{self.what_to_perceive}")
@@ -156,6 +167,9 @@ class YOLOInference():
         # This service is for receiving a list of "what" to perceive 
         self.what_to_perceive = []
         for wanted_cat in srv.data :
+            if wanted_cat == "*":
+                self.what_to_perceive = list(self.model_detection_classes.values())
+                break
             if wanted_cat not in self.model_detection_classes.values():
                 rospy.logwarn(f"Class '{wanted_cat}' not found in the model classes. Ignoring it.")
                 continue
@@ -183,18 +197,6 @@ class YOLOInference():
             rospy.logerr(e)
         # cv2.imshow("Image window", self._color_frame)
         # cv2.waitKey(3)
-
-    # Callback function to receive the camera info
-    def getCameraInfo(self, cameraInfo): 
-        self._intrinsics.width = cameraInfo.width
-        self._intrinsics.height = cameraInfo.height
-        self._intrinsics.cx = cameraInfo.K[2]
-        self._intrinsics.cy = cameraInfo.K[5]
-        self._intrinsics.fx = cameraInfo.K[0]
-        self._intrinsics.fy = cameraInfo.K[4]
-        self._intrinsics.model  = cameraInfo.distortion_model
-        self._intrinsics.coeffs = [i for i in cameraInfo.D]  
-        self.camera_info_sub.unregister()
 
     # Inference functions 
     def detect(self, frame, object_classes_list): 
@@ -379,12 +381,3 @@ class YOLOInference():
             self.rate.sleep()
 
     
-if __name__ == '__main__':
-
-    node = YOLOInference()
-
-    try:
-        node.run()
-    except rospy.ROSInterruptException:
-        pass
-   

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.10.2)
 project(hhcm_yolo_ros)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
@@ -12,9 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs 
-  
   genmsg  
-
   geometry_msgs 
 )
 
@@ -167,7 +165,7 @@ include_directories(
 #   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
 catkin_install_python(PROGRAMS 
-  scripts/yolo_inference.py
+  scripts/yolo_inference
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
@@ -194,11 +192,10 @@ catkin_install_python(PROGRAMS
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
 
-install(FILES
-  launch/yolo_inference.launch 
-#   # myfile1
-#   # myfile2
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+install(
+  DIRECTORY launch/
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
+  FILES_MATCHING PATTERN "*.launch"
 )
 
 #############
