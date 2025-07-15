@@ -2,3 +2,5 @@
 *.vscode
 *.egg
 *.egg-info
+weights/*
+!/weights/.gitkeep
