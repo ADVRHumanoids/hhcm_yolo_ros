@@ -22,6 +22,5 @@
         <param name="verbose" value="$(arg verbose)"/>
         <param name="visualize_boundbox" value="$(arg visualize_boundbox)"/>
         <param name="initial_class" value="$(arg initial_class)"/>
-
     </node>
 </launch>
