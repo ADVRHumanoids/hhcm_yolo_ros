@@ -170,15 +170,16 @@ class YOLOInference():
             if wanted_cat == "*":
                 self.what_to_perceive = list(self.model_detection_classes.values())
                 break
+            if wanted_cat == "":
+                rospy.loginfo(f"Received empty class hence inference is paused.")
+                self.what_to_perceive = []
+                break
             if wanted_cat not in self.model_detection_classes.values():
                 rospy.logwarn(f"Class '{wanted_cat}' not found in the model classes. Ignoring it.")
                 continue
             self.what_to_perceive.append(wanted_cat)
 
         rospy.loginfo(f"Called what to perceive server: selected classes:\n{self.what_to_perceive}")
-            
-        if len(self.what_to_perceive) == 0:
-            return ClientToServerListStringResponse(success=False)
         
         return ClientToServerListStringResponse(success=True)
 
@@ -304,7 +305,7 @@ class YOLOInference():
         # list[0]: boolean (True: some detections available, False: no detections)
         # list[1]: corresponding color frame of the prediction (necessary because in the meanwhile the frame may be updated)
         # list[2]: list of predictions (each item of this list is explained in the <detect> function)
-         
+        
         if (len(self._color_frame) > 0): 
             color_frame = self._color_frame
             # cv2.imshow("Image window", color_frame)
