@@ -290,6 +290,9 @@ class YOLOInference():
                             msg_object_status.segmentation_mask.layout.dim[1].size = shape_maks[1]
                             msg_object_status.segmentation_mask.layout.dim[1].stride = 1
 
+                        msg_object_status.header.stamp = rospy.Time.now()
+                        msg_object_status.header.frame_id = self.image_received_header_frame_id
+
                         custom_pred.append(msg_object_status)  
 
                         self.object_status_pub.publish(msg_object_status)
